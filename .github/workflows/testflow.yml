@@ -1,0 +1,34 @@
+name: Test workflow
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Person to greet'
+        default: 'World'
+        required: false
+env:
+  test: ${{ secrets.TEST_SECRET }}
+jobs:
+  justdoit:
+    runs-on: ubuntu-latest
+    steps:
+    - name: secrets
+      run: |
+        if [ "$test" = "Sandy Pants" ]; then
+          echo "Sandy"
+        elif [ "$test" = "A New Value" ]; then
+          echo "A New Value"
+        elif [ "$test" = "oh yeah" ]; then
+          echo "oh"
+        else 
+          echo NONE
+        fi
+    - name: GitHub Context
+      run: echo "${{ github.ref_name }}"
+      
+    - uses: gliech/create-github-secret-action@v1
+      if: "${{ env.test  != '' }}"
+      with:
+        name: TEST_SECRET
+        value: oh yeah
+        pa_token: ${{ secrets.PA_TOKEN }}
