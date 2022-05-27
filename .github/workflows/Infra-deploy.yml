@@ -1,0 +1,71 @@
+name: Infrastructure Deployment
+on:
+  workflow_dispatch:
+    # Inputs the workflow accepts.
+    inputs:
+      azRegion:
+        description: 'Resource Location'
+        default: 'eastus'
+        required: false
+      azResourceGroupName:
+        description: 'Resource Group Name'
+        default: 'rg-srcbytes-eastus'
+        required: false
+      azAcrName:
+        description: 'Name of Azure Container Registry'
+        default: "acrsrcbytes"
+        required: false
+env:
+  CREDS : ${{ secrets.AZURE_CREDENTIALS }}
+#  azAcrName : "acrsrcbytes${{ github.sha }}"  #github.run_id  #github.run_number
+  
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+#    - run: echo "SUBSCRIPTION_ID=$(az account show --query id)" >> $GITHUB_ENV
+#    - run: echo "$SUBSCRIPTION_ID"
+#    - run: echo "CLIENT_ID=$( echo $CREDS | jq '.clientId')" >> $GITHUB_ENV
+#    - run: echo "$CLIENT_ID"
+    - uses: azure/login@v1
+      with:
+        creds: ${{ env.CREDS }}
+    - name: Create Resource Group and Container Registry
+      run: |
+        az group create --name ${{ github.event.inputs.azResourceGroupName }} --location ${{ github.event.inputs.azRegion }}
+        az acr create -g ${{ github.event.inputs.azResourceGroupName }} -n ${{ github.event.inputs.azAcrName }} --sku basic --admin-enabled true
+    - name: Get Registry Credentials
+      run: |
+        echo "REGISTRY_LOGIN_SERVER=$( az acr show -n ${{ github.event.inputs.azAcrName }} --query loginServer )" >> $GITHUB_ENV
+        echo "REGISTRY_LOGIN_USER=$( az acr credential show -n ${{ github.event.inputs.azAcrName }} --query username )" >> $GITHUB_ENV
+        echo "REGISTRY_LOGIN_PASSWORD=$( az acr credential show -n ${{ github.event.inputs.azAcrName }} --query passwords[0].value )" >> $GITHUB_ENV
+        
+    - name: Update Login Server Secret
+      uses: gliech/create-github-secret-action@v1
+      if: "${{ env.REGISTRY_LOGIN_SERVER  != '' }}"
+      with:
+        name: REGISTRY_LOGIN_SERVER
+        value: ${{ env.REGISTRY_LOGIN_SERVER }}
+        pa_token: ${{ secrets.PA_TOKEN }}
+    - name: Update Login User Secret
+      uses: gliech/create-github-secret-action@v1
+      if: "${{ env.REGISTRY_LOGIN_USER  != '' }}"
+      with:
+        name: REGISTRY_LOGIN_USER
+        value: ${{ env.REGISTRY_LOGIN_USER }}
+        pa_token: ${{ secrets.PA_TOKEN }}
+    - name: Update Login Password Secret
+      uses: gliech/create-github-secret-action@v1
+      if: "${{ env.REGISTRY_LOGIN_PASSWORD  != '' }}"
+      with:
+        name: REGISTRY_LOGIN_PASSWORD
+        value: ${{ env.REGISTRY_LOGIN_PASSWORD }}
+        pa_token: ${{ secrets.PA_TOKEN }}
+    - name: Notify To Add Role Assignment
+      run: |
+        spid=$( echo $CREDS | jq '.clientid')
+        echo $spid
+        echo "You must grant ACRPUSH priviledges to the GitHub Service Principle : $( az ad sp show --id $spid | jq '.displayName')"
+#        gh service account has no perms to change rbac role assignments
+#        az role assignment create --assignee ${{ env.CLIENT_ID }} --scope /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ github.event.inputs.azResourceGroupName }}/providers/Microsoft.ContainerRegistry/registries/${{ github.event.inputs.azAcrName }} --role acrpush
+
